@@ -1,6 +1,7 @@
-import sys, requests, pickle
+import sys, requests, pickle, os
 import logging
 from lxml import html, etree
+from subprocess import call
 import cssutils
 from colour import Color
 
@@ -10,12 +11,18 @@ to_init = True
 
 css_url = None
 
+package_directory = os.path.dirname(os.path.abspath(__file__))
+
+type_file = os.path.join(package_directory, 'obj/type_dict.pkl')
+line_file = os.path.join(package_directory, 'obj/line_dict.pkl')
+
+
 type_dict = {
-    "walk": dict(icon="icons/walk.svg", color='#ffffff', background='')
+    "walk": dict(icon="icons/walk.png" )
 }
 
 line_dict = {
-    '': dict(background='', color='')
+    '': dict()
 }
 
 image_url = None
@@ -28,6 +35,12 @@ def init():
     global to_init
     global type_dict
     global line_dict
+
+    if not os.path.isfile(type_file):
+        save_obj(type_dict, "type_dict")
+    if not os.path.isfile(line_file):
+        save_obj(line_dict, "line_dict")
+
     if to_init:
         type_dict = load_obj('type_dict')
         line_dict = load_obj('line_dict')
@@ -64,7 +77,8 @@ def treat_background(background_prop):
     if 'url(' in background_prop:
         properties['icon'] = background_prop[background_prop.index('(')+1: background_prop.index(')')]
         get_image(properties['icon'])
-        properties['icon'] = properties['icon'][properties['icon'].rfind('/')+1:]
+        properties['icon'] = 'icons/' + properties['icon'][properties['icon'].rfind('/')+1:]
+        properties['icon'] = properties['icon'].replace('.svg', '.png')
     for part in background_prop.split():
         if check_color(part):  
             properties['background'] = part
@@ -101,9 +115,13 @@ def get_selector_property(qselector, qproperty, pvalue=''):
 
 def get_image(rel_path):
     resp = requests.get(css_url + rel_path)
-    with open('icons/' + rel_path[rel_path.rfind('/')+1:], 'w') as svg:
+    svg_path = os.path.join(package_directory, 'icons/', rel_path[rel_path.rfind('/')+1:])
+    with open(svg_path, 'w') as svg:
         svg.write(resp.text)
         svg.close()
+    cmd = 'convert -size 200x200 "' + svg_path+ '"'
+    cmd += ' "' + svg_path[:svg_path.index('.svg')]+ '.png"'
+    call(cmd, shell=True)
 
 def load_type_style(typee):
     type_style = {}
@@ -143,11 +161,11 @@ def get_type_style(typee):
     return type_dict[typee].copy()
 
 def save_obj(obj, name ):
-    with open('obj/'+ name + '.pkl', 'wb') as f:
+    with open(os.path.join(package_directory, 'obj/', name + '.pkl'), 'wb') as f:
         pickle.dump(obj, f, pickle.HIGHEST_PROTOCOL)
 
 def load_obj(name ):
-    with open('obj/' + name + '.pkl', 'rb') as f:
+    with open(os.path.join(package_directory, 'obj/', name + '.pkl'), 'rb') as f:
         return pickle.load(f)
 
 def get_style(typee, line):

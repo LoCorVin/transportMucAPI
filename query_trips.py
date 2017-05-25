@@ -1,7 +1,7 @@
 import sys, time
 import json, requests
 from datetime import date, datetime
-from cssinfo import get_css_style
+from .cssinfo import get_css_style
 
 trips_url = 'https://www.mvg.de/fahrinfo/api/routing'
 locations_url = 'https://www.mvg.de/fahrinfo/api/location/queryWeb'
@@ -18,8 +18,8 @@ lang = lang_de
 
 
 mvg_authorization_key='5af1beca494712ed38d313714d4caff6'
-fromString="Belgradstraße 36"
-toString="Holzkirchen"
+fromString="Innstraße"
+toString="Garching-Forschungszentrum"
 
 locations = {}
 
@@ -30,6 +30,7 @@ def printToFile(filename, content):
         out.write(content)
         out.close()
         exit()
+
 
 def get_now_timestamp():
     return int(time.time() * 1000)
@@ -66,7 +67,6 @@ def get_trips(from_location, to_location, time=get_now_timestamp()):
     params = format_location("from", start_location)
     params.update(format_location("to", end_location))
     params['time'] = time
-    print(get_date_time(get_now_timestamp()).strftime("%d.%m.%y %H:%M"))
     headers = get_headers()
 
     resp = requests.get(url=trips_url, headers=headers, params=params)
@@ -113,6 +113,7 @@ def get_transportation(trip_part):
 def get_duration(trip_or_part):
     t = (trip_or_part["arrival"] - trip_or_part["departure"])/60000
     return str(int(t/60)) + ":" + ("0" if t % 60 < 10 else "") + str(int(t % 60))
+
 
 def format_output(obj, nested_level=0):
     spacing = '   '
@@ -165,15 +166,16 @@ def shorten_trips(trips):
     tps = []
     for trip in trips['connectionList']:
         tp = {}
-        tp['departure'] = get_dt(trip["departure"])['time']
-        tp['arrival'] = get_dt(trip['arrival'])['time']
-        tp['duration'] = get_duration(trip)
+        tp['departure'] = trip["departure"]
+        tp['arrival'] = trip['arrival']
         tp['trip_parts'] = []
         for partTrip in trip['connectionPartList']:
             tpp = {}
-            tpp['departure'] = get_dt(partTrip['departure'])['time']
-            tpp['arrival'] = get_dt(partTrip["arrival"])['time']
-            tpp['duration'] = get_duration(partTrip)
+            tpp['departure'] = partTrip['departure']
+            tpp['arrival'] = partTrip["arrival"]
+            set_value(tpp, 'predictedDeparture', get_val(partTrip, 'predictedDeparture'))
+            set_value(tpp, 'predictedArrival', get_val(partTrip, 'predictedArrival'))
+            #tpp['duration'] = #get_duration(partTrip)
             tpp['transportation'] = get_transportation_string(partTrip)
             tpp.update(get_transportation(partTrip))
             tpp['from'] = get_stop(partTrip["from"])
@@ -181,6 +183,63 @@ def shorten_trips(trips):
             tp['trip_parts'].append(tpp)
         tps.append(tp)
     return tps
+
+def set_duration(dictionary):
+    departure = dictionary['departure']
+    arrival = dictionary['arrival']
+    if 'predictedDeparture' in dictionary:
+        departure = dictionary['predictedDeparture']
+    if 'predictedArrival' in dictionary:
+        arrival = dictionary['predictedArrival']
+    dictionary['duration'] = arrival - departure
+    return dictionary
+
+def custom_format(obj, keywords, form_func):
+    if type(obj) == dict:
+        obj = dict([(k, form_func(custom_format(v)) if k in keywords else custom_format(v)) for k, v in obj.items()])
+        return obj
+    elif type(obj) == list:
+        return [enhance_times(subobj) for subobj in obj]
+    else:
+        return obj
+
+def enhance_times(obj):
+    if type(obj) == dict:
+        if 'departure' in obj and 'arrival' in obj:
+            obj = set_duration(obj)
+        obj = dict([(k, enhance_times(v)) for k, v in obj.items()])
+        return obj
+    elif type(obj) == list:
+        return [enhance_times(subobj) for subobj in obj]
+    else:
+        return obj
+
+def get_time(timestamp):
+    return get_dt(time)['time']
+
+    
+def short_distance(timediff):
+    timediff = int(timediff/1000/60)
+    return str(int(timediff/60)) + ":" + ("0" if timediff % 60 < 10 else "") + str(int(timediff - 60*int(timediff/60)))
+
+def distance(timediff):
+    time_str = ""
+    timediff = int(timediff/1000/60)
+    if int(timediff/60) > 0:
+        time_str += str(int(timediff/60)) + " H "
+    time_str += str(int(timediff - 60*int(timediff/60))) + " Min"
+    return time_str
+
+def get_val(dictionary, key):
+    if key in dictionary:
+        return dictionary[key]
+    return None
+
+
+def set_value(dictionary, key, value):
+    if value is None:
+        return
+    dictionary[key] = value
 
 def get_stop(location):
     if 'name' in location:
@@ -193,8 +252,15 @@ def main(argv):
         trips = get_trips(fromString, toString)
     else:
         trips = get_trips(argv[1], argv[2])
+
+    selected_trip_info = shorten_trips(trips)
+
+    style_ext_trips = extend_style(selected_trip_info)
+
+    time_enhanced_tf = enhance_times(style_ext_trips)
+
     #trips = load_trips_from_file("crawled.json")
-    print(format_output(extend_style(shorten_trips(trips))))
+    print(format_output(time_enhanced_tf))
 
 if __name__ == "__main__":
     main(sys.argv)
