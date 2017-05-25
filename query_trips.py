@@ -6,6 +6,7 @@ from .cssinfo import get_css_style
 trips_url = 'https://www.mvg.de/fahrinfo/api/routing'
 locations_url = 'https://www.mvg.de/fahrinfo/api/location/queryWeb'
 
+
 lang_en = dict(
         footway='Footway'
     )
@@ -61,7 +62,9 @@ def send_request(url, params, headers):
         return None
     return json.loads(resp.text)
 
-def get_trips(from_location, to_location, time=get_now_timestamp()):
+def get_trips(from_location, to_location, time=None):
+    if not time:
+        time = get_now_timestamp()
     start_location = get_location(from_location)
     end_location = get_location(to_location)
     params = format_location("from", start_location)
@@ -235,6 +238,20 @@ def get_val(dictionary, key):
         return dictionary[key]
     return None
 
+def get_address(lat, lon):
+    json_loc = send_request("http://maps.googleapis.com/maps/api/geocode/json", dict(latlng=str(lat) + "," + str(lon)), {})
+    try:
+        route = ''
+        street_number = ''
+        for part in json_loc['results'][0]['address_components']:
+            if 'route' in part['types']:
+                route = part['short_name']
+            if 'street_number' in part['types']:
+                street_number = part['short_name']
+        return route + " " + street_number
+    except Exception as e:
+        return None
+
 
 def set_value(dictionary, key, value):
     if value is None:
@@ -245,7 +262,11 @@ def get_stop(location):
     if 'name' in location:
         return location['name']
     if 'latitude' in location:
-        return str(location['latitude']) + ", " + str(location['longitude'])
+        address = get_address(location['latitude'], location['longitude'])
+        if address is None:
+            return str(location['latitude']) + ", " + str(location['longitude'])
+        else:
+            return address
 
 def main(argv):
     if(len(argv) < 3):
