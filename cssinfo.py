@@ -1,5 +1,6 @@
 import sys, requests, pickle, os
 import logging
+import json
 from lxml import html, etree
 from subprocess import call
 import cssutils
@@ -15,6 +16,7 @@ package_directory = os.path.dirname(os.path.abspath(__file__))
 
 type_file = os.path.join(package_directory, 'obj/type_dict.pkl')
 line_file = os.path.join(package_directory, 'obj/line_dict.pkl')
+loc_file = os.path.join(package_directory, 'obj/loc_dict.pkl')
 
 
 type_dict = {
@@ -24,6 +26,8 @@ type_dict = {
 line_dict = {
     '': dict()
 }
+
+loc_dict = {}
 
 image_url = None
 
@@ -35,16 +39,30 @@ def init():
     global to_init
     global type_dict
     global line_dict
+    global loc_dict
 
     if not os.path.isfile(type_file):
         save_obj(type_dict, "type_dict")
     if not os.path.isfile(line_file):
         save_obj(line_dict, "line_dict")
+    if not os.path.isfile(loc_file):
+        save_obj(loc_dict, "loc_dict")
 
     if to_init:
         type_dict = load_obj('type_dict')
         line_dict = load_obj('line_dict')
+        loc_dict = load_obj('loc_dict')
         to_init = False
+
+def send_request(url, params, headers):
+    try:
+        resp = requests.get(url=url, headers=headers, params=params)
+        if resp.status_code != 200 or 'application/json' not in resp.headers['content-type']:
+            return None
+        return json.loads(resp.text)
+    except Exception:
+        pass
+    return None
 
 def get_css_string():
     global css_file_string
@@ -152,6 +170,28 @@ def get_line_style(line):
         line_dict[line] = load_line_style(line)
         save_obj(line_dict, 'line_dict')
     return line_dict[line].copy()
+
+def get_address_loc(lat, lng):
+    init()
+    if not (lng, lat) in loc_dict:
+        loc_dict[(lng, lat)] = get_address(lat, lng)
+        save_obj(loc_dict, 'loc_dict')
+    return loc_dict[(lng, lat)]
+
+def get_address(lat, lon):
+    json_loc = send_request("http://maps.googleapis.com/maps/api/geocode/json", dict(latlng=str(lat) + "," + str(lon)), {})
+    try:
+        route = ''
+        street_number = ''
+        for part in json_loc['results'][0]['address_components']:
+            if 'route' in part['types']:
+                route = part['short_name']
+            if 'street_number' in part['types']:
+                street_number = part['short_name']
+        return route + " " + street_number
+    except Exception as e:
+        return None
+
 
 def get_type_style(typee):
     init()

@@ -1,7 +1,7 @@
 import sys, time
 import json, requests
 from datetime import date, datetime
-from .cssinfo import get_css_style
+from .cssinfo import get_css_style, get_address_loc
 
 trips_url = 'https://www.mvg.de/fahrinfo/api/routing'
 locations_url = 'https://www.mvg.de/fahrinfo/api/location/queryWeb'
@@ -238,20 +238,6 @@ def get_val(dictionary, key):
         return dictionary[key]
     return None
 
-def get_address(lat, lon):
-    json_loc = send_request("http://maps.googleapis.com/maps/api/geocode/json", dict(latlng=str(lat) + "," + str(lon)), {})
-    try:
-        route = ''
-        street_number = ''
-        for part in json_loc['results'][0]['address_components']:
-            if 'route' in part['types']:
-                route = part['short_name']
-            if 'street_number' in part['types']:
-                street_number = part['short_name']
-        return route + " " + street_number
-    except Exception as e:
-        return None
-
 
 def set_value(dictionary, key, value):
     if value is None:
@@ -262,7 +248,7 @@ def get_stop(location):
     if 'name' in location:
         return location['name']
     if 'latitude' in location:
-        address = get_address(location['latitude'], location['longitude'])
+        address = get_address_loc(location['latitude'], location['longitude'])
         if address is None:
             return str(location['latitude']) + ", " + str(location['longitude'])
         else:
